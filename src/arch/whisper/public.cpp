@@ -10,6 +10,7 @@
 #include "transcribe-model.h"  // transcribe_model (session->model)
 #include "whisper.h"           // WhisperSession (+ transcribe/whisper.h, transcribe-session.h)
 
+#include <algorithm>
 #include <cstddef>
 #include <cstring>
 
@@ -118,7 +119,7 @@ extern "C" transcribe_status transcribe_get_whisper_chunk_trace(const struct tra
 // EnviousWispr #3735 additions.
 extern "C" transcribe_status transcribe_whisper_detect_language(struct transcribe_session * session,
                                                                 const float *               pcm,
-                                                                int                         n_samples,
+                                                                int64_t                     n_samples,
                                                                 char *                      out_code,
                                                                 size_t                      out_code_cap,
                                                                 float *                     out_logprob) {
@@ -135,8 +136,13 @@ extern "C" transcribe_status transcribe_whisper_detect_language(struct transcrib
     transcribe_run_params_init(&params);
     params.language            = nullptr;  // force auto-detection
     params.timestamps          = TRANSCRIBE_TIMESTAMPS_NONE;
+    // Trim to one model window BEFORE preprocessing, so later audio never enters
+    // the mel normalization of the window detection reads.
+    const auto * model          = static_cast<const transcribe::whisper::WhisperModel *>(wc->model);
+    const int    window_samples = model->hparams.fe_n_samples > 0 ? model->hparams.fe_n_samples : 480000;
+    const int    bounded_samples = static_cast<int>(std::min<int64_t>(n_samples, window_samples));
     wc->ew_detect_language_only = true;
-    const transcribe_status st = transcribe_run(session, pcm, n_samples, &params);
+    const transcribe_status st  = transcribe_run(session, pcm, bounded_samples, &params);
     wc->ew_detect_language_only = false;
     if (st != TRANSCRIBE_OK) {
         return st;

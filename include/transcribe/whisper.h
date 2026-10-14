@@ -216,8 +216,9 @@ TRANSCRIBE_API transcribe_status transcribe_get_whisper_chunk_trace(const struct
 
 /*
  * Language identification with a confidence, for callers that run their own
- * multi-window language policy. Runs the encoder on `pcm` (padded/trimmed to
- * one 30 s window exactly as transcribe_run does), one decoder step from
+ * multi-window language policy. Only the first model window of `pcm` is used
+ * (input longer than 30 s is trimmed BEFORE preprocessing, shorter input is
+ * padded exactly as transcribe_run does); runs the encoder on it, one decoder step from
  * <|sot|>, restricts the logits to the language tokens and returns the
  * argmax code plus its log-softmax over the language tokens. No text is
  * decoded. Same session contract as transcribe_run (single thread at a time,
@@ -234,7 +235,7 @@ TRANSCRIBE_API transcribe_status transcribe_get_whisper_chunk_trace(const struct
  */
 TRANSCRIBE_API transcribe_status transcribe_whisper_detect_language(struct transcribe_session * session,
                                                                     const float *               pcm,
-                                                                    int                         n_samples,
+                                                                    int64_t                     n_samples,
                                                                     char *                      out_code,
                                                                     size_t                      out_code_cap,
                                                                     float *                     out_logprob);

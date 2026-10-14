@@ -1404,6 +1404,13 @@ transcribe_status whisper_run(transcribe_session *          session,
     if (total_mel_frames <= 0) {
         return TRANSCRIBE_ERR_GGUF;
     }
+    // EnviousWispr #3735: progress denominator counts REAL frames only. Short-form
+    // input is zero-padded to one full window above; reporting against that padded
+    // total would understate progress. Decoder seek is unchanged.
+    const int total_real_mel_frames =
+        cm->mel.has_value() ?
+            std::max(1, std::min(total_mel_frames, cm->mel->n_frames_for(static_cast<size_t>(n_samples)) - 1)) :
+            total_mel_frames;
 
     // ----- Run-scoped constants -----
     const int64_t n_ctx_decoder    = cm->hparams.dec_max_target_positions;
@@ -2613,8 +2620,8 @@ transcribe_status whisper_run(transcribe_session *          session,
         // EnviousWispr #3735: observation-only seek progress, monotonic and
         // bounded (seek only grows; clamp the last window to the total).
         if (cc->ew_progress_cb != nullptr) {
-            cc->ew_progress_cb(static_cast<int64_t>(std::min(seek, total_mel_frames)),
-                               static_cast<int64_t>(total_mel_frames), cc->ew_progress_userdata);
+            cc->ew_progress_cb(static_cast<int64_t>(std::min(seek, total_real_mel_frames)),
+                               static_cast<int64_t>(total_real_mel_frames), cc->ew_progress_userdata);
         }
     }
 
