@@ -139,6 +139,12 @@ extern "C" transcribe_status transcribe_whisper_detect_language(struct transcrib
     // Trim to one model window BEFORE preprocessing, so later audio never enters
     // the mel normalization of the window detection reads.
     const auto * model          = static_cast<const transcribe::whisper::WhisperModel *>(wc->model);
+    if (!model->caps.supports_language_detect || model->lang_token_ids.empty()) {
+        // English-only (.en) models: refuse before any inference, leaving an
+        // empty result rather than a decoded transcript.
+        wc->clear_result();
+        return TRANSCRIBE_ERR_UNSUPPORTED_LANGUAGE;
+    }
     const int    window_samples = model->hparams.fe_n_samples > 0 ? model->hparams.fe_n_samples : 480000;
     const int    bounded_samples = static_cast<int>(std::min<int64_t>(n_samples, window_samples));
     wc->ew_detect_language_only = true;

@@ -1853,6 +1853,11 @@ transcribe_status whisper_run(transcribe_session *          session,
                 }
             }
             if (cc->ew_detect_language_only) {
+                // Honour an abort requested while the encoder or detection step ran.
+                if (cc->poll_abort()) {
+                    commit_result();
+                    return TRANSCRIBE_ERR_ABORTED;
+                }
                 commit_result();
                 return TRANSCRIBE_OK;
             }
@@ -2618,14 +2623,20 @@ transcribe_status whisper_run(transcribe_session *          session,
             seek += segment_offset_frames;
         }
         // EnviousWispr #3735: observation-only seek progress, monotonic and
-        // bounded (seek only grows; clamp the last window to the total).
+        // bounded. In-loop reports stop one frame short of the total: seek can
+        // pass the real end while padded frames still decode, and completion is
+        // reported only once the run has actually finished (below).
         if (cc->ew_progress_cb != nullptr) {
-            cc->ew_progress_cb(static_cast<int64_t>(std::min(seek, total_real_mel_frames)),
+            cc->ew_progress_cb(static_cast<int64_t>(std::min(seek, total_real_mel_frames - 1)),
                                static_cast<int64_t>(total_real_mel_frames), cc->ew_progress_userdata);
         }
     }
 
     commit_result();
+    if (cc->ew_progress_cb != nullptr) {
+        cc->ew_progress_cb(static_cast<int64_t>(total_real_mel_frames), static_cast<int64_t>(total_real_mel_frames),
+                           cc->ew_progress_userdata);
+    }
 
     return TRANSCRIBE_OK;
 }

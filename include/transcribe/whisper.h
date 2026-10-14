@@ -243,8 +243,9 @@ TRANSCRIBE_API transcribe_status transcribe_whisper_detect_language(struct trans
 /*
  * Observation-only seek progress for long-form runs. Called on the running
  * thread after every seek advance (including no-speech skips) with
- * (min(advanced mel frames, total), total real mel frames); values are
- * monotonic within a run. Never called for an aborted or failed window, and a
+ * (advanced mel frames, total real mel frames); values are monotonic within
+ * a run, stay below total until the run has finished, and the final call of a
+ * successful run reports (total, total). Never called for an aborted or failed window, and a
  * failed run never reports completion it did not reach. Install or clear only
  * while no run is in flight; keep `userdata` alive until the session is freed
  * or the callback is cleared. The callback must not call session functions.
