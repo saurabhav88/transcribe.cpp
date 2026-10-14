@@ -1495,6 +1495,7 @@ transcribe_status whisper_run(transcribe_session *          session,
     // ----- Chunk loop -----
     cc->clear_result();
     cc->chunk_traces.clear();
+    cc->ew_language_detection_ran          = false;
     cc->ew_detected_language_logprob_valid = false;
     cc->ew_detected_language_logprob       = 0.0f;
     std::vector<int32_t> all_text_ids;
@@ -1777,6 +1778,7 @@ transcribe_status whisper_run(transcribe_session *          session,
         // Language detection: once, first chunk, only if no hint and the model
         // has language tokens (.en has none, so it's skipped automatically).
         if (is_first_chunk && is_multilingual && lang_token < 0 && !cm->lang_token_ids.empty()) {
+            cc->ew_language_detection_ran = true;  // EnviousWispr #3735
             // Lazily materialize encoder output to host for the prefill
             // graph's encoder_out_in input (one-shot per run; the hot path
             // reads cc->enc_out.tensor directly).

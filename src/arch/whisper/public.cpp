@@ -141,8 +141,14 @@ extern "C" transcribe_status transcribe_whisper_detect_language(struct transcrib
     if (st != TRANSCRIBE_OK) {
         return st;
     }
-    if (!wc->ew_detected_language_logprob_valid || wc->detected_language.empty()) {
+    if (!wc->ew_language_detection_ran) {
+        // Detection did not run: the model has no language tokens (.en variants).
         return TRANSCRIBE_ERR_UNSUPPORTED_LANGUAGE;
+    }
+    if (wc->detected_language.empty() || !wc->ew_detected_language_logprob_valid) {
+        // Detection ran but produced no finite winner (non-finite logits):
+        // report a backend failure, never a plausible confidence.
+        return TRANSCRIBE_ERR_BACKEND;
     }
     std::strncpy(out_code, wc->detected_language.c_str(), out_code_cap - 1);
     out_code[out_code_cap - 1] = '\0';

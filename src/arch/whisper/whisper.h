@@ -332,6 +332,7 @@ struct WhisperSession final : public transcribe_session {
     bool  ew_detect_language_only = false;
     // Log-softmax over the language tokens of the detected language, valid
     // only when the last run auto-detected (no language hint).
+    bool  ew_language_detection_ran          = false;
     bool  ew_detected_language_logprob_valid = false;
     float ew_detected_language_logprob       = 0.0f;
     // Seek-progress observer: called after every seek advance with

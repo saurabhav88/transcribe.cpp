@@ -227,6 +227,7 @@ TRANSCRIBE_API transcribe_status transcribe_get_whisper_chunk_trace(const struct
  *   TRANSCRIBE_ERR_INVALID_ARG  NULL session/pcm/out pointers, n_samples <= 0,
  *                               out_code_cap < 2, or a non-Whisper session.
  *   TRANSCRIBE_ERR_UNSUPPORTED_LANGUAGE  the model has no language tokens.
+ *   TRANSCRIBE_ERR_BACKEND      detection ran but produced no finite winner.
  *   any transcribe_run status otherwise (ABORTED via the abort callback).
  *   TRANSCRIBE_OK  out_code holds a NUL-terminated code (truncated to cap),
  *                  *out_logprob <= 0.
