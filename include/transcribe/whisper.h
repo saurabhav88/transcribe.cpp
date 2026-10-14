@@ -210,6 +210,49 @@ TRANSCRIBE_API transcribe_status transcribe_get_whisper_chunk_trace(const struct
                                                                     int                                     i,
                                                                     struct transcribe_whisper_chunk_trace * out_trace);
 
+/* ----------------------------------------------------------------------- */
+/* EnviousWispr fork additions (#3735)                                     */
+/* ----------------------------------------------------------------------- */
+
+/*
+ * Language identification with a confidence, for callers that run their own
+ * multi-window language policy. Runs the encoder on `pcm` (padded/trimmed to
+ * one 30 s window exactly as transcribe_run does), one decoder step from
+ * <|sot|>, restricts the logits to the language tokens and returns the
+ * argmax code plus its log-softmax over the language tokens. No text is
+ * decoded. Same session contract as transcribe_run (single thread at a time,
+ * one run in flight per model); the session's previous result is replaced by
+ * an empty one.
+ * Returns:
+ *   TRANSCRIBE_ERR_INVALID_ARG  NULL session/pcm/out pointers, n_samples <= 0,
+ *                               out_code_cap < 2, or a non-Whisper session.
+ *   TRANSCRIBE_ERR_UNSUPPORTED_LANGUAGE  the model has no language tokens.
+ *   any transcribe_run status otherwise (ABORTED via the abort callback).
+ *   TRANSCRIBE_OK  out_code holds a NUL-terminated code (truncated to cap),
+ *                  *out_logprob <= 0.
+ */
+TRANSCRIBE_API transcribe_status transcribe_whisper_detect_language(struct transcribe_session * session,
+                                                                    const float *               pcm,
+                                                                    int                         n_samples,
+                                                                    char *                      out_code,
+                                                                    size_t                      out_code_cap,
+                                                                    float *                     out_logprob);
+
+/*
+ * Observation-only seek progress for long-form runs. Called on the running
+ * thread after every seek advance (including no-speech skips) with
+ * (min(advanced mel frames, total), total real mel frames); values are
+ * monotonic within a run. Never called for an aborted or failed window, and a
+ * failed run never reports completion it did not reach. Install or clear only
+ * while no run is in flight; keep `userdata` alive until the session is freed
+ * or the callback is cleared. The callback must not call session functions.
+ */
+typedef void (*transcribe_whisper_progress_callback)(int64_t advanced_frames, int64_t total_frames, void * userdata);
+
+TRANSCRIBE_API transcribe_status transcribe_whisper_set_progress_callback(struct transcribe_session *            session,
+                                                                          transcribe_whisper_progress_callback cb,
+                                                                          void *                                userdata);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

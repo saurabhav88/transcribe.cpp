@@ -1495,6 +1495,8 @@ transcribe_status whisper_run(transcribe_session *          session,
     // ----- Chunk loop -----
     cc->clear_result();
     cc->chunk_traces.clear();
+    cc->ew_detected_language_logprob_valid = false;
+    cc->ew_detected_language_logprob       = 0.0f;
     std::vector<int32_t> all_text_ids;
     all_text_ids.reserve(256);
     // Unfiltered twin of all_text_ids: accepted ids INCLUDING timestamp and
@@ -1825,6 +1827,25 @@ transcribe_status whisper_run(transcribe_session *          session,
             // branch: the field means "what the model picked", not the hint.
             if (best_index >= 0 && static_cast<size_t>(best_index) < cm->lang_codes.size()) {
                 cc->detected_language = cm->lang_codes[static_cast<size_t>(best_index)];
+                // EnviousWispr #3735: log-softmax of the winner over the language
+                // tokens only (same quantity as WhisperKit's LanguageLogitsFilter
+                // + greedy sampler logProbs). log p(best) = -log(sum exp(v - best)).
+                double sum = 0.0;
+                for (size_t i = 0; i < cm->lang_token_ids.size(); ++i) {
+                    const int32_t id = cm->lang_token_ids[i];
+                    if (id >= 0 && id < static_cast<int>(vocab_size)) {
+                        sum += std::exp(static_cast<double>(last_logits[static_cast<size_t>(id)]) -
+                                        static_cast<double>(best));
+                    }
+                }
+                if (sum > 0.0 && std::isfinite(sum)) {
+                    cc->ew_detected_language_logprob       = static_cast<float>(-std::log(sum));
+                    cc->ew_detected_language_logprob_valid = true;
+                }
+            }
+            if (cc->ew_detect_language_only) {
+                commit_result();
+                return TRANSCRIBE_OK;
             }
         }
         if (is_multilingual && lang_token < 0) {
@@ -2586,6 +2607,12 @@ transcribe_status whisper_run(transcribe_session *          session,
                 segment_offset_frames = seek_num_frames;
             }
             seek += segment_offset_frames;
+        }
+        // EnviousWispr #3735: observation-only seek progress, monotonic and
+        // bounded (seek only grows; clamp the last window to the total).
+        if (cc->ew_progress_cb != nullptr) {
+            cc->ew_progress_cb(static_cast<int64_t>(std::min(seek, total_mel_frames)),
+                               static_cast<int64_t>(total_mel_frames), cc->ew_progress_userdata);
         }
     }
 

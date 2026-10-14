@@ -44,6 +44,11 @@ const transcribe::whisper::WhisperSession * maybe_whisper_context(const struct t
     return static_cast<const transcribe::whisper::WhisperSession *>(session);
 }
 
+transcribe::whisper::WhisperSession * maybe_whisper_context_mut(struct transcribe_session * session) {
+    return const_cast<transcribe::whisper::WhisperSession *>(
+        maybe_whisper_context(static_cast<const struct transcribe_session *>(session)));
+}
+
 }  // namespace
 
 // Init functions (single source of truth for Whisper struct defaults).
@@ -107,5 +112,52 @@ extern "C" transcribe_status transcribe_get_whisper_chunk_trace(const struct tra
     transcribe_whisper_chunk_trace staged = wc->chunk_traces[static_cast<size_t>(i)];
     staged.struct_size                    = caller_size;
     copy_out_prefix(out_trace, &staged, caller_size, sizeof(staged));
+    return TRANSCRIBE_OK;
+}
+
+// EnviousWispr #3735 additions.
+extern "C" transcribe_status transcribe_whisper_detect_language(struct transcribe_session * session,
+                                                                const float *               pcm,
+                                                                int                         n_samples,
+                                                                char *                      out_code,
+                                                                size_t                      out_code_cap,
+                                                                float *                     out_logprob) {
+    if (pcm == nullptr || n_samples <= 0 || out_code == nullptr || out_code_cap < 2 || out_logprob == nullptr) {
+        return TRANSCRIBE_ERR_INVALID_ARG;
+    }
+    out_code[0]  = '\0';
+    *out_logprob = 0.0f;
+    auto * wc    = maybe_whisper_context_mut(session);
+    if (wc == nullptr) {
+        return TRANSCRIBE_ERR_INVALID_ARG;
+    }
+    transcribe_run_params params;
+    transcribe_run_params_init(&params);
+    params.language            = nullptr;  // force auto-detection
+    params.timestamps          = TRANSCRIBE_TIMESTAMPS_NONE;
+    wc->ew_detect_language_only = true;
+    const transcribe_status st = transcribe_run(session, pcm, n_samples, &params);
+    wc->ew_detect_language_only = false;
+    if (st != TRANSCRIBE_OK) {
+        return st;
+    }
+    if (!wc->ew_detected_language_logprob_valid || wc->detected_language.empty()) {
+        return TRANSCRIBE_ERR_UNSUPPORTED_LANGUAGE;
+    }
+    std::strncpy(out_code, wc->detected_language.c_str(), out_code_cap - 1);
+    out_code[out_code_cap - 1] = '\0';
+    *out_logprob               = wc->ew_detected_language_logprob;
+    return TRANSCRIBE_OK;
+}
+
+extern "C" transcribe_status transcribe_whisper_set_progress_callback(struct transcribe_session *            session,
+                                                                      transcribe_whisper_progress_callback cb,
+                                                                      void *                                userdata) {
+    auto * wc = maybe_whisper_context_mut(session);
+    if (wc == nullptr) {
+        return TRANSCRIBE_ERR_INVALID_ARG;
+    }
+    wc->ew_progress_cb       = cb;
+    wc->ew_progress_userdata = cb != nullptr ? userdata : nullptr;
     return TRANSCRIBE_OK;
 }
